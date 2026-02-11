@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   ads-bridge-mcp:
     image: ghcr.io/digiti/ads-bridge-mcp:latest
