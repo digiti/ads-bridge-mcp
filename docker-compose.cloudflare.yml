@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  ads-bridge-mcp:
+    image: ghcr.io/digiti/ads-bridge-mcp:latest
+    container_name: ads-bridge-mcp
+    restart: unless-stopped
+    environment:
+      - META_MCP_URL=http://meta-ads-mcp:8080/mcp
+      - GOOGLE_MCP_URL=http://google-ads-mcp:8080/mcp
+      - BRIDGE_PORT=8080
+    networks:
+      - portainer_tunnel-network
+
+networks:
+  portainer_tunnel-network:
+    external: true
