@@ -5,12 +5,14 @@ from typing import Any
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
 from ..normalize import (
+    InvalidDateError,
     attach_diagnostics,
     compute_derived_metrics,
     micros_to_display,
     normalize_google_insights,
     normalize_meta_insights,
     safe_divide,
+    validate_date,
 )
 
 
@@ -19,13 +21,15 @@ def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     clicks = sum(int(row.get("clicks", 0)) for row in rows)
     spend_micros = sum(int(row.get("spend_micros", 0)) for row in rows)
     conversions = sum(float(row.get("conversions", 0)) for row in rows)
-    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+    conversion_value = sum(float(row.get("conversion_value", 0)) for row in rows)
+    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
     return {
         "impressions": impressions,
         "clicks": clicks,
         "spend_micros": spend_micros,
         "spend": micros_to_display(spend_micros),
         "conversions": round(conversions, 2),
+        "conversion_value": round(conversion_value, 2),
         "ctr": float(derived["ctr"]),
         "cpc_micros": int(derived["cpc_micros"]),
         "cpm_micros": int(derived["cpm_micros"]),
@@ -155,6 +159,11 @@ async def get_period_comparison(
     Use when: You need period-over-period deltas for key metrics across platforms,
     such as week-over-week or month-over-month shifts in spend and efficiency.
 
+    Differs from compare_performance: compare_performance shows one range only;
+    this tool compares two ranges and computes absolute and percentage deltas.
+    Differs from compare_daily_trends: daily_trends shows day-by-day within one
+    range; this tool compares aggregate totals across two ranges.
+
     Args:
         meta_account_ids: Meta ad account IDs to include in both periods.
         google_account_ids: Google Ads customer IDs to include in both periods.
@@ -164,6 +173,16 @@ async def get_period_comparison(
         compare_date_end: Inclusive end date for the comparison period in YYYY-MM-DD format.
         google_login_customer_id: Optional manager account ID for Google Ads API access.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+        validate_date(compare_date_start)
+        validate_date(compare_date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "comparison": {}, "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     (
         current_meta_rows,
         current_google_rows,

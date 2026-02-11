@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_meta_insights, safe_divide
+from ..normalize import InvalidDateError, attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_meta_insights, safe_divide, validate_date
 
 
 def _empty_ad_row() -> dict[str, Any]:
@@ -33,7 +33,7 @@ def _finalize_ad_row(row: dict[str, Any]) -> dict[str, Any]:
     spend_micros = int(row.get("spend_micros", 0))
     conversions = float(row.get("conversions", 0))
     conversion_value = float(row.get("conversion_value", 0))
-    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
 
     return {
         **row,
@@ -65,6 +65,10 @@ async def compare_ad_performance(
     Use when: You need a cross-platform leaderboard of top or bottom ads by a
     chosen metric (for example spend, clicks, conversions, CTR, or CPC).
 
+    Differs from analyze_creative_performance: creative_performance includes
+    creative asset details (headlines, descriptions, images); this tool ranks
+    ads purely by performance metrics without creative metadata.
+
     Args:
         meta_account_ids: Meta ad account IDs to include in ad ranking.
         google_account_ids: Google Ads customer IDs to include in ad ranking.
@@ -75,27 +79,25 @@ async def compare_ad_performance(
         limit: Maximum number of ranked ads to return.
         sort_order: Sort direction, either "asc" or "desc".
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "ads": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     allowed_sort_by = {"spend_micros", "impressions", "clicks", "conversions", "ctr", "cpc_micros"}
     if sort_by not in allowed_sort_by:
-        return json.dumps(
-            {
-                "status": "error",
-                "ads": [],
-                "errors": [{"source": "validation", "error": f"sort_by must be one of {sorted(allowed_sort_by)}"}],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "ads": [], "errors": [{"source": "validation", "error": f"sort_by must be one of {sorted(allowed_sort_by)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     allowed_sort_order = {"asc", "desc"}
     if sort_order not in allowed_sort_order:
-        return json.dumps(
-            {
-                "status": "error",
-                "ads": [],
-                "errors": [{"source": "validation", "error": f"sort_order must be one of {sorted(allowed_sort_order)}"}],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "ads": [], "errors": [{"source": "validation", "error": f"sort_order must be one of {sorted(allowed_sort_order)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     effective_limit = max(int(limit), 0)
 

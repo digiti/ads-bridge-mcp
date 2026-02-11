@@ -5,6 +5,7 @@ from typing import Any
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
 from ..normalize import (
+    InvalidDateError,
     attach_diagnostics,
     build_response,
     compute_derived_metrics,
@@ -12,6 +13,7 @@ from ..normalize import (
     normalize_google_insights,
     normalize_meta_insights,
     safe_divide,
+    validate_date,
 )
 
 
@@ -140,59 +142,61 @@ async def compare_performance(
 ) -> str:
     """Compare Meta and Google performance across multiple aggregation modes.
 
-    Use `by_platform`, `by_account`, or `total` for standard performance rollups;
-    use `top_campaigns` to rank campaigns by `sort_by` and return the top `limit` rows;
-    use `summary` for totals, platform split, and top 3 campaigns per platform.
+    Use when: You need a unified cross-platform performance view at any granularity
+    (platform, account, campaign ranking, or executive summary) over a custom date range.
+
+    Aggregation modes:
+    - by_platform: One row per platform with totals.
+    - by_account: One row per ad account across both platforms.
+    - total: Single combined row for all accounts.
+    - top_campaigns: Rank individual campaigns by sort_by, return top limit rows.
+    - summary: Executive view with totals, platform split percentages, and top 3 campaigns per platform.
+
+    Differs from compare_daily_trends: daily_trends shows day-by-day timeline;
+    this tool aggregates the full range into rollup rows.
+    Differs from get_period_comparison: period_comparison computes deltas between
+    two date ranges; this tool shows a single range.
+    Differs from get_budget_analysis(allocation): budget_analysis focuses on spend
+    split and ROAS recommendation; this tool provides full metric breakdowns.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to query.
+        google_account_ids: Google Ads customer IDs to query.
+        date_start: Inclusive start date in YYYY-MM-DD.
+        date_end: Inclusive end date in YYYY-MM-DD.
+        google_login_customer_id: Optional manager account ID for cross-account querying.
+        aggregation: Rollup mode (by_platform, by_account, total, top_campaigns, summary).
+        level: Data level for API queries (campaign or account).
+        sort_by: Metric to rank by when aggregation is top_campaigns or summary.
+        limit: Max rows for top_campaigns mode.
     """
+
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "rows": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     allowed_aggregations = {"by_platform", "by_account", "total", "top_campaigns", "summary"}
     allowed_levels = {"account", "campaign"}
     allowed_sort = {"spend", "impressions", "clicks", "conversions"}
 
     if aggregation not in allowed_aggregations:
-        return json.dumps(
-            {
-                "status": "error",
-                "rows": [],
-                "errors": [
-                    {
-                        "source": "validation",
-                        "error": f"aggregation must be one of {sorted(allowed_aggregations)}",
-                    }
-                ],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "rows": [], "errors": [{"source": "validation", "error": f"aggregation must be one of {sorted(allowed_aggregations)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     if level not in allowed_levels:
-        return json.dumps(
-            {
-                "status": "error",
-                "rows": [],
-                "errors": [
-                    {
-                        "source": "validation",
-                        "error": f"level must be one of {sorted(allowed_levels)}",
-                    }
-                ],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "rows": [], "errors": [{"source": "validation", "error": f"level must be one of {sorted(allowed_levels)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     if sort_by not in allowed_sort:
-        return json.dumps(
-            {
-                "status": "error",
-                "rows": [],
-                "errors": [
-                    {
-                        "source": "validation",
-                        "error": f"sort_by must be one of {sorted(allowed_sort)}",
-                    }
-                ],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "rows": [], "errors": [{"source": "validation", "error": f"sort_by must be one of {sorted(allowed_sort)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     errors: list[dict[str, Any]] = []
     meta_rows: list[dict[str, Any]] = []

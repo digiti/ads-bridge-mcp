@@ -37,8 +37,9 @@ async def _get_meta_client() -> Any:
     async with _meta_lock:
         if _meta_client is None:
             client_cls = _get_client_class()
-            _meta_client = client_cls(META_MCP_URL)
-            await _meta_client.__aenter__()
+            local = client_cls(META_MCP_URL)
+            await local.__aenter__()
+            _meta_client = local  # Only assign after successful connection
         return _meta_client
 
 
@@ -50,8 +51,9 @@ async def _get_google_client() -> Any:
     async with _google_lock:
         if _google_client is None:
             client_cls = _get_client_class()
-            _google_client = client_cls(GOOGLE_MCP_URL)
-            await _google_client.__aenter__()
+            local = client_cls(GOOGLE_MCP_URL)
+            await local.__aenter__()
+            _google_client = local  # Only assign after successful connection
         return _google_client
 
 

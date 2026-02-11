@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_google_insights, normalize_meta_insights
+from ..normalize import InvalidDateError, attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_google_insights, normalize_meta_insights, validate_date
 
 
 def _aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -12,13 +12,15 @@ def _aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     clicks = sum(int(row.get("clicks", 0)) for row in rows)
     spend_micros = sum(int(row.get("spend_micros", 0)) for row in rows)
     conversions = sum(float(row.get("conversions", 0)) for row in rows)
-    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+    conversion_value = sum(float(row.get("conversion_value", 0)) for row in rows)
+    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
     return {
         "impressions": impressions,
         "clicks": clicks,
         "spend_micros": spend_micros,
         "spend": micros_to_display(spend_micros),
         "conversions": round(conversions, 2),
+        "conversion_value": round(conversion_value, 2),
         **derived,
     }
 
@@ -37,6 +39,11 @@ async def compare_daily_trends(
     Use when: You need a day-by-day cross-platform timeline to diagnose trend
     changes, pacing shifts, or performance divergence over a selected date range.
 
+    Differs from compare_performance: compare_performance aggregates the full
+    range into rollup rows; this tool returns one entry per day.
+    Differs from get_period_comparison: period_comparison computes deltas between
+    two date ranges; this tool shows the day-by-day shape within a single range.
+
     Args:
         meta_account_ids: Meta ad account IDs to include in daily trend aggregation.
         google_account_ids: Google Ads customer IDs to include in daily trend aggregation.
@@ -44,6 +51,14 @@ async def compare_daily_trends(
         date_end: Inclusive end date for the trend window in YYYY-MM-DD format.
         google_login_customer_id: Optional manager account ID for Google Ads API access.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "daily": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     meta_rows: list[dict[str, Any]] = []
     google_rows: list[dict[str, Any]] = []

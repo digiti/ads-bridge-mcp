@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics, micros_to_display, normalize_google_insights, normalize_meta_insights, safe_divide
+from ..normalize import InvalidDateError, attach_diagnostics, micros_to_display, normalize_google_insights, normalize_meta_insights, safe_divide, validate_date
 
 
 def _platform_totals(rows: list[dict[str, Any]]) -> dict[str, float]:
@@ -87,25 +87,50 @@ async def get_budget_analysis(
     month_end: str | None = None,
     include_raw: bool = False,
 ) -> str:
-    """Analyze cross-platform budget by mode: use allocation for spend split and ROAS over a custom date range, or pacing for in-month budget pacing and projected monthly spend."""
+    """Analyze cross-platform budget by mode: allocation or pacing.
+
+    Use when: You need budget-centric analysis — either how spend is split between
+    platforms with ROAS comparison (allocation), or whether accounts are on track to
+    hit their monthly budgets (pacing).
+
+    Modes:
+    - allocation: Requires date_start and date_end. Returns spend split percentages,
+      per-platform ROAS, and a reallocation recommendation.
+    - pacing: Uses month_start/month_end (defaults to current month). Returns per-account
+      budget vs actual spend, projected monthly spend, and pacing status.
+
+    Differs from compare_performance: compare_performance provides full metric breakdowns
+    (impressions, clicks, CTR, etc.); this tool focuses on budget utilization and ROAS.
+    Differs from compare_daily_trends: daily_trends provides day-by-day timelines;
+    allocation mode returns a single-range spend summary.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to analyze.
+        google_account_ids: Google Ads customer IDs to analyze.
+        analysis_type: Mode of analysis — allocation or pacing.
+        date_start: Required for allocation. Inclusive start date in YYYY-MM-DD.
+        date_end: Required for allocation. Inclusive end date in YYYY-MM-DD.
+        google_login_customer_id: Optional manager account ID for cross-account querying.
+        month_start: Optional for pacing. Start of budget window in YYYY-MM-DD (defaults to 1st of current month).
+        month_end: Optional for pacing. End of budget window in YYYY-MM-DD (defaults to last day of month_start's month).
+    """
     if analysis_type not in {"allocation", "pacing"}:
-        return json.dumps(
-            {
-                "status": "error",
-                "error": "Invalid analysis_type. Supported values are: allocation, pacing.",
-            },
-            indent=2,
-        )
+        result = {"status": "error", "error": "Invalid analysis_type. Supported values are: allocation, pacing."}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     if analysis_type == "allocation":
         if not date_start or not date_end:
-            return json.dumps(
-                {
-                    "status": "error",
-                    "error": "date_start and date_end are required when analysis_type is 'allocation'.",
-                },
-                indent=2,
-            )
+            result = {"status": "error", "error": "date_start and date_end are required when analysis_type is 'allocation'."}
+            attach_diagnostics(result)
+            return json.dumps(result, indent=2)
+        try:
+            validate_date(date_start)
+            validate_date(date_end)
+        except InvalidDateError as exc:
+            result = {"status": "error", "error": str(exc)}
+            attach_diagnostics(result)
+            return json.dumps(result, indent=2)
 
         errors: list[dict[str, Any]] = []
         meta_rows: list[dict[str, Any]] = []
@@ -488,6 +513,10 @@ async def get_budget_analysis(
     if errors:
         result["errors"] = errors
 
-    attach_diagnostics(result, meta_raw, google_raw, include_raw)
+    meta_diag_raw = {"accounts": meta_raw.get("insights", {})}
+    google_diag_raw = {"accounts": google_raw.get("spend", {})}
+    attach_diagnostics(result, meta_diag_raw, google_diag_raw, include_raw)
+    if include_raw:
+        result["platform_results"] = {"meta": meta_raw, "google": google_raw}
 
     return json.dumps(result, indent=2)

@@ -1,4 +1,17 @@
+from datetime import datetime
 from typing import Any
+
+
+class InvalidDateError(ValueError):
+    pass
+
+
+def validate_date(date_str: str) -> str:
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError) as exc:
+        raise InvalidDateError(f"Invalid date '{date_str}': expected YYYY-MM-DD") from exc
+    return date_str
 
 
 def meta_spend_to_micros(spend_str: str | float) -> int:

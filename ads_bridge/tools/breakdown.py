@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics, compute_derived_metrics, meta_spend_to_micros, micros_to_display, safe_divide
+from ..normalize import InvalidDateError, attach_diagnostics, compute_derived_metrics, meta_spend_to_micros, micros_to_display, safe_divide, validate_date
 
 
 _META_CONVERSION_ACTION_TYPES = {
@@ -50,14 +50,15 @@ def _parse_meta_conversions(item: dict[str, Any]) -> float:
 
 
 def _extract_meta_conversion_value(item: dict[str, Any]) -> float:
-    total = 0.0
-    for action_value in item.get("action_values", []):
-        if action_value.get("action_type") in (
-            "purchase",
-            "omni_purchase",
-        ):
-            total += float(action_value.get("value", 0) or 0)
-    return total
+    av_by_type = {
+        av.get("action_type"): float(av.get("value", 0) or 0)
+        for av in item.get("action_values", [])
+        if isinstance(av, dict)
+    }
+    for action_type in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
+        if action_type in av_by_type:
+            return av_by_type[action_type]
+    return 0.0
 
 
 def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -65,13 +66,15 @@ def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     clicks = sum(int(row.get("clicks", 0)) for row in rows)
     spend_micros = sum(int(row.get("spend_micros", 0)) for row in rows)
     conversions = sum(float(row.get("conversions", 0)) for row in rows)
-    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+    conversion_value = sum(float(row.get("conversion_value", 0)) for row in rows)
+    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
     return {
         "impressions": impressions,
         "clicks": clicks,
         "spend_micros": spend_micros,
         "spend": micros_to_display(spend_micros),
         "conversions": round(conversions, 2),
+        "conversion_value": round(conversion_value, 2),
         "ctr": float(derived["ctr"]),
         "cpc_micros": int(derived["cpc_micros"]),
         "cpm_micros": int(derived["cpm_micros"]),
@@ -94,7 +97,7 @@ def _finalize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     spend_micros = int(metrics.get("spend_micros", 0))
     conversions = float(metrics.get("conversions", 0))
     conversion_value = float(metrics.get("conversion_value", 0))
-    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+    derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
     return {
         "impressions": impressions,
         "clicks": clicks,
@@ -179,24 +182,19 @@ async def compare_by_dimension(
     - Use `dimension="country"` to evaluate geo performance including conversion value by market.
     - Use `dimension="placement"` to align Meta publisher platforms with Google channel-type performance.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "dimension": dimension, "date_start": date_start, "date_end": date_end, "segments": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     allowed_dimensions = {"age", "gender", "device", "country", "placement"}
     if dimension not in allowed_dimensions:
-        return json.dumps(
-            {
-                "status": "error",
-                "dimension": dimension,
-                "date_start": date_start,
-                "date_end": date_end,
-                "segments": [],
-                "errors": [
-                    {
-                        "source": "validation",
-                        "error": f"dimension must be one of {sorted(allowed_dimensions)}",
-                    }
-                ],
-            },
-            indent=2,
-        )
+        result = {"status": "error", "dimension": dimension, "date_start": date_start, "date_end": date_end, "segments": [], "errors": [{"source": "validation", "error": f"dimension must be one of {sorted(allowed_dimensions)}"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     errors: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"accounts": {}}
@@ -345,6 +343,7 @@ async def compare_by_dimension(
                         "clicks": int(item.get("clicks", 0)),
                         "spend_micros": meta_spend_to_micros(item.get("spend", "0")),
                         "conversions": _parse_meta_conversions(item),
+                        "conversion_value": _extract_meta_conversion_value(item),
                     }
                 )
 
@@ -383,6 +382,7 @@ async def compare_by_dimension(
                         "clicks": int(item.get("metrics.clicks", 0)),
                         "spend_micros": int(item.get("metrics.cost_micros", 0)),
                         "conversions": float(item.get("metrics.conversions", 0)),
+                        "conversion_value": float(item.get("metrics.conversions_value", 0) or 0),
                     }
                 )
 

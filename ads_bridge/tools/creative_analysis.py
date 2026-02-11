@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import build_diagnostics, meta_spend_to_micros, micros_to_display, safe_divide
+from ..normalize import InvalidDateError, attach_diagnostics, build_diagnostics, meta_spend_to_micros, micros_to_display, safe_divide, validate_date
 
 
 def _extract_meta_conversions(actions: Any) -> float:
@@ -104,6 +104,9 @@ async def analyze_creative_performance(
     Use when: You need creative-level insights (headlines, descriptions, URLs,
     and media metadata) tied to performance metrics to guide copy or asset iteration.
 
+    Differs from compare_ad_performance: ad_performance ranks ads by pure metrics
+    only; this tool enriches each ad with its creative assets (copy, images, URLs).
+
     Args:
         meta_account_ids: Meta ad account IDs to analyze for creative performance.
         google_account_ids: Google Ads customer IDs to analyze for creative performance.
@@ -113,6 +116,14 @@ async def analyze_creative_performance(
         limit: Maximum creatives to keep per account before final ranking.
         sort_by: Metric key used to rank returned creatives.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result = {"status": "error", "creatives": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     creatives: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"insights": {}, "creatives": {}}
