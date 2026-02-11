@@ -98,6 +98,20 @@ async def analyze_creative_performance(
     limit: int = 10,
     sort_by: str = "spend_micros",
 ) -> str:
+    """Analyze top-performing creatives and ad assets across Meta and Google Ads.
+
+    Use when: You need creative-level insights (headlines, descriptions, URLs,
+    and media metadata) tied to performance metrics to guide copy or asset iteration.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to analyze for creative performance.
+        google_account_ids: Google Ads customer IDs to analyze for creative performance.
+        date_start: Inclusive start date for creative performance in YYYY-MM-DD format.
+        date_end: Inclusive end date for creative performance in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+        limit: Maximum creatives to keep per account before final ranking.
+        sort_by: Metric key used to rank returned creatives.
+    """
     errors: list[dict[str, Any]] = []
     creatives: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"insights": {}, "creatives": {}}
@@ -362,7 +376,6 @@ async def analyze_creative_performance(
         "limit": limit,
         "creatives": ranked_creatives,
         "total_ads_analyzed": total_ads_analyzed,
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors

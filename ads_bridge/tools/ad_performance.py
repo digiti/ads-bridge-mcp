@@ -59,6 +59,21 @@ async def compare_ad_performance(
     limit: int = 20,
     sort_order: str = "desc",
 ) -> str:
+    """Rank ad-level performance across Meta and Google Ads for a date range.
+
+    Use when: You need a cross-platform leaderboard of top or bottom ads by a
+    chosen metric (for example spend, clicks, conversions, CTR, or CPC).
+
+    Args:
+        meta_account_ids: Meta ad account IDs to include in ad ranking.
+        google_account_ids: Google Ads customer IDs to include in ad ranking.
+        date_start: Inclusive start date for ad performance in YYYY-MM-DD format.
+        date_end: Inclusive end date for ad performance in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+        sort_by: Metric key used to sort ads across platforms.
+        limit: Maximum number of ranked ads to return.
+        sort_order: Sort direction, either "asc" or "desc".
+    """
     allowed_sort_by = {"spend_micros", "impressions", "clicks", "conversions", "ctr", "cpc_micros"}
     if sort_by not in allowed_sort_by:
         return json.dumps(
@@ -275,7 +290,6 @@ async def compare_ad_performance(
         "limit": effective_limit,
         "ads": output_ads,
         "total_ads_found": len(finalized_ads),
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors

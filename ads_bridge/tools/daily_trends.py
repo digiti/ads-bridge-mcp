@@ -31,6 +31,18 @@ async def compare_daily_trends(
     date_end: str,
     google_login_customer_id: str | None = None,
 ) -> str:
+    """Compare daily account-level performance trends across Meta and Google Ads.
+
+    Use when: You need a day-by-day cross-platform timeline to diagnose trend
+    changes, pacing shifts, or performance divergence over a selected date range.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to include in daily trend aggregation.
+        google_account_ids: Google Ads customer IDs to include in daily trend aggregation.
+        date_start: Inclusive start date for the trend window in YYYY-MM-DD format.
+        date_end: Inclusive end date for the trend window in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+    """
     errors: list[dict[str, Any]] = []
     meta_rows: list[dict[str, Any]] = []
     google_rows: list[dict[str, Any]] = []
@@ -140,7 +152,6 @@ async def compare_daily_trends(
         "date_start": date_start,
         "date_end": date_end,
         "daily": daily,
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors

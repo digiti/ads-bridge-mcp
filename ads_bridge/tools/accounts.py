@@ -7,6 +7,14 @@ from ..client import call_both
 
 @mcp.tool()
 async def compare_accounts() -> str:
+    """List accessible Meta and Google Ads accounts for the current credentials.
+
+    Use when: You need account IDs before running analysis tools, want to confirm
+    cross-platform access, or need a quick inventory of available ad accounts.
+
+    Args:
+        None.
+    """
     meta_result, google_result = await call_both(
         "get_ad_accounts",
         {},

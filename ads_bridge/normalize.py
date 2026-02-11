@@ -22,13 +22,16 @@ def compute_derived_metrics(
     clicks: int,
     spend_micros: int,
     conversions: float,
+    conversion_value: float = 0.0,
 ) -> dict[str, Any]:
+    spend = spend_micros / 1_000_000 if spend_micros else 0.0
     return {
         "ctr": round(safe_divide(clicks, impressions) * 100, 2),
         "cpc_micros": int(safe_divide(spend_micros, clicks)),
         "cpm_micros": int(safe_divide(spend_micros, impressions) * 1000),
         "cvr": round(safe_divide(conversions, clicks) * 100, 2),
         "cost_per_conversion_micros": int(safe_divide(spend_micros, conversions)) if conversions else 0,
+        "roas": round(safe_divide(conversion_value, spend), 2),
     }
 
 
@@ -49,7 +52,25 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
             ):
                 conversions += float(action.get("value", 0))
 
-        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+        # Extract conversion value from action_values (monetary amounts).
+        # purchase, omni_purchase, and offsite_conversion.fb_pixel_purchase
+        # are often duplicates of the same value — use priority order to
+        # avoid double-counting.
+        conversion_value = 0.0
+        _av_by_type = {
+            av.get("action_type"): float(av.get("value", 0))
+            for av in item.get("action_values", [])
+        }
+        for _atype in (
+            "purchase",
+            "omni_purchase",
+            "offsite_conversion.fb_pixel_purchase",
+        ):
+            if _atype in _av_by_type:
+                conversion_value = _av_by_type[_atype]
+                break
+
+        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
         rows.append(
             {
                 "platform": "meta",
@@ -64,7 +85,7 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "spend_micros": spend_micros,
                 "spend": micros_to_display(spend_micros),
                 "conversions": conversions,
-                "conversion_value": float(item.get("purchase_roas", 0) or 0),
+                "conversion_value": conversion_value,
                 **derived,
             }
         )
@@ -79,7 +100,8 @@ def normalize_google_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
         spend_micros = google_micros_to_micros(item.get("metrics.cost_micros", 0))
         conversions = float(item.get("metrics.conversions", 0))
 
-        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+        conversion_value = float(item.get("metrics.conversions_value", 0) or 0)
+        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
         rows.append(
             {
                 "platform": "google",
@@ -94,7 +116,7 @@ def normalize_google_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "spend_micros": spend_micros,
                 "spend": micros_to_display(spend_micros),
                 "conversions": conversions,
-                "conversion_value": float(item.get("metrics.conversions_value", 0) or 0),
+                "conversion_value": conversion_value,
                 **derived,
             }
         )
@@ -104,8 +126,6 @@ def normalize_google_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
 def build_response(
     status: str,
     rows: list[dict[str, Any]],
-    meta_raw: dict[str, Any] | None = None,
-    google_raw: dict[str, Any] | None = None,
     errors: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     response: dict[str, Any] = {
@@ -113,12 +133,6 @@ def build_response(
         "normalized_unit": "micros (1,000,000 = 1 currency unit)",
         "rows": rows,
     }
-    if meta_raw is not None or google_raw is not None:
-        response["platform_results"] = {}
-        if meta_raw is not None:
-            response["platform_results"]["meta"] = meta_raw
-        if google_raw is not None:
-            response["platform_results"]["google"] = google_raw
     if errors:
         response["errors"] = errors
     return response

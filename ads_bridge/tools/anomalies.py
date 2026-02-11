@@ -8,6 +8,17 @@ from ..client import call_google_tool, call_meta_tool
 from ..normalize import normalize_google_insights, normalize_meta_insights, safe_divide
 
 
+SPEND_SPIKE_THRESHOLD_PCT = 100
+SPEND_SPIKE_HIGH_SEVERITY_PCT = 200
+CTR_DROP_THRESHOLD_PCT = -30
+CTR_DROP_HIGH_SEVERITY_PCT = -50
+CONVERSIONS_DROP_THRESHOLD_PCT = -50
+CONVERSIONS_DROP_HIGH_SEVERITY_PCT = -70
+ANOMALY_LOOKBACK_DAYS = 7
+ANOMALY_BASELINE_DAYS = 5
+ANOMALY_RECENT_DAYS = 2
+
+
 def _group_by_campaign(rows: list[dict[str, Any]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
@@ -41,11 +52,11 @@ def _daily_rollup(campaign_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     daily = _daily_rollup(rows)
-    if len(daily) < 7:
+    if len(daily) < ANOMALY_LOOKBACK_DAYS:
         return []
 
-    previous = daily[:5]
-    recent = daily[5:7]
+    previous = daily[:ANOMALY_BASELINE_DAYS]
+    recent = daily[ANOMALY_BASELINE_DAYS : ANOMALY_BASELINE_DAYS + ANOMALY_RECENT_DAYS]
 
     prev_spend = safe_divide(sum(float(d["spend_micros"]) for d in previous), len(previous))
     prev_ctr = safe_divide(sum(float(d["ctr"]) for d in previous), len(previous))
@@ -58,7 +69,7 @@ def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     anomalies: list[dict[str, Any]] = []
 
     spend_change_pct = safe_divide((recent_spend - prev_spend), prev_spend) * 100 if prev_spend else 0.0
-    if spend_change_pct > 100:
+    if spend_change_pct > SPEND_SPIKE_THRESHOLD_PCT:
         anomalies.append(
             {
                 "metric": "spend",
@@ -66,12 +77,12 @@ def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "expected": round(prev_spend, 2),
                 "actual": round(recent_spend, 2),
                 "change_pct": round(spend_change_pct, 2),
-                "severity": "high" if spend_change_pct > 200 else "medium",
+                "severity": "high" if spend_change_pct > SPEND_SPIKE_HIGH_SEVERITY_PCT else "medium",
             }
         )
 
     ctr_change_pct = safe_divide((recent_ctr - prev_ctr), prev_ctr) * 100 if prev_ctr else 0.0
-    if ctr_change_pct < -30:
+    if ctr_change_pct < CTR_DROP_THRESHOLD_PCT:
         anomalies.append(
             {
                 "metric": "ctr",
@@ -79,12 +90,12 @@ def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "expected": round(prev_ctr, 2),
                 "actual": round(recent_ctr, 2),
                 "change_pct": round(ctr_change_pct, 2),
-                "severity": "high" if ctr_change_pct < -50 else "medium",
+                "severity": "high" if ctr_change_pct < CTR_DROP_HIGH_SEVERITY_PCT else "medium",
             }
         )
 
     conv_change_pct = safe_divide((recent_conv - prev_conv), prev_conv) * 100 if prev_conv else 0.0
-    if conv_change_pct < -50:
+    if conv_change_pct < CONVERSIONS_DROP_THRESHOLD_PCT:
         anomalies.append(
             {
                 "metric": "conversions",
@@ -92,7 +103,7 @@ def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "expected": round(prev_conv, 2),
                 "actual": round(recent_conv, 2),
                 "change_pct": round(conv_change_pct, 2),
-                "severity": "high" if conv_change_pct < -70 else "medium",
+                "severity": "high" if conv_change_pct < CONVERSIONS_DROP_HIGH_SEVERITY_PCT else "medium",
             }
         )
 
@@ -123,8 +134,18 @@ async def detect_anomalies(
     google_account_ids: list[str],
     google_login_customer_id: str | None = None,
 ) -> str:
+    """Detect spend, CTR, and conversion anomalies at campaign level.
+
+    Use when: You want automated anomaly detection over the most recent week to
+    flag campaigns with sudden efficiency or spend shifts that need investigation.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to include in anomaly checks.
+        google_account_ids: Google Ads customer IDs to include in anomaly checks.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+    """
     today = datetime.now(UTC).date()
-    date_start = (today - timedelta(days=6)).isoformat()
+    date_start = (today - timedelta(days=ANOMALY_LOOKBACK_DAYS - 1)).isoformat()
     date_end = today.isoformat()
 
     errors: list[dict[str, Any]] = []
@@ -221,13 +242,12 @@ async def detect_anomalies(
         "date_start": date_start,
         "date_end": date_end,
         "thresholds": {
-            "spend_spike_pct": 100,
-            "ctr_drop_pct": -30,
-            "conversions_drop_pct": -50,
+            "spend_spike_pct": SPEND_SPIKE_THRESHOLD_PCT,
+            "ctr_drop_pct": CTR_DROP_THRESHOLD_PCT,
+            "conversions_drop_pct": CONVERSIONS_DROP_THRESHOLD_PCT,
         },
         "anomalies": anomalies,
         "count": len(anomalies),
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors

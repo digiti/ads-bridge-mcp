@@ -142,19 +142,33 @@ async def get_period_comparison(
     compare_date_end: str,
     google_login_customer_id: str | None = None,
 ) -> str:
+    """Compare current and previous period performance across Meta and Google Ads.
+
+    Use when: You need period-over-period deltas for key metrics across platforms,
+    such as week-over-week or month-over-month shifts in spend and efficiency.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to include in both periods.
+        google_account_ids: Google Ads customer IDs to include in both periods.
+        date_start: Inclusive start date for the current period in YYYY-MM-DD format.
+        date_end: Inclusive end date for the current period in YYYY-MM-DD format.
+        compare_date_start: Inclusive start date for the comparison period in YYYY-MM-DD format.
+        compare_date_end: Inclusive end date for the comparison period in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+    """
     (
         current_meta_rows,
         current_google_rows,
-        current_meta_raw,
-        current_google_raw,
+        _current_meta_raw,
+        _current_google_raw,
         current_errors,
     ) = await _fetch_period(meta_account_ids, google_account_ids, date_start, date_end, google_login_customer_id)
 
     (
         previous_meta_rows,
         previous_google_rows,
-        previous_meta_raw,
-        previous_google_raw,
+        _previous_meta_raw,
+        _previous_google_raw,
         previous_errors,
     ) = await _fetch_period(
         meta_account_ids,
@@ -202,10 +216,6 @@ async def get_period_comparison(
         "current_period": {"date_start": date_start, "date_end": date_end},
         "previous_period": {"date_start": compare_date_start, "date_end": compare_date_end},
         "comparison": comparison,
-        "platform_results": {
-            "meta": {"current": current_meta_raw, "previous": previous_meta_raw},
-            "google": {"current": current_google_raw, "previous": previous_google_raw},
-        },
     }
     if errors:
         result["errors"] = errors

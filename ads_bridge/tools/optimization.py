@@ -7,6 +7,13 @@ from ..client import call_google_tool, call_meta_tool
 from ..normalize import meta_spend_to_micros, safe_divide
 
 
+LOW_CTR_THRESHOLD = 1.0
+LOW_CTR_MIN_IMPRESSIONS = 1000
+HIGH_CPC_MULTIPLIER = 2
+LOW_CVR_THRESHOLD = 1.0
+LOW_CVR_MIN_CLICKS = 100
+
+
 def _extract_meta_conversions(actions: Any) -> float:
     if not isinstance(actions, list):
         return 0.0
@@ -66,6 +73,19 @@ async def get_optimization_opportunities(
     date_end: str,
     google_login_customer_id: str | None = None,
 ) -> str:
+    """Surface actionable optimization opportunities across Meta and Google Ads.
+
+    Use when: You want prioritized recommendations for underperforming campaigns,
+    including low CTR/CVR, unusually high CPC, zero-conversion spend, and Google
+    recommendation objects in one normalized response.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to evaluate for heuristic opportunities.
+        google_account_ids: Google Ads customer IDs to collect recommendation objects from.
+        date_start: Inclusive start date for performance evaluation in YYYY-MM-DD format.
+        date_end: Inclusive end date for performance evaluation in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+    """
     errors: list[dict[str, Any]] = []
     opportunities: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"accounts": {}}
@@ -129,7 +149,7 @@ async def get_optimization_opportunities(
             cpc_micros = int(row.get("cpc_micros", 0))
             cvr = float(row.get("cvr", 0.0))
 
-            if ctr < 1.0 and impressions > 1000:
+            if ctr < LOW_CTR_THRESHOLD and impressions > LOW_CTR_MIN_IMPRESSIONS:
                 opportunities.append(
                     {
                         "platform": "meta",
@@ -147,7 +167,7 @@ async def get_optimization_opportunities(
                     }
                 )
 
-            if avg_cpc_micros > 0 and cpc_micros > avg_cpc_micros * 2:
+            if avg_cpc_micros > 0 and cpc_micros > avg_cpc_micros * HIGH_CPC_MULTIPLIER:
                 opportunities.append(
                     {
                         "platform": "meta",
@@ -165,7 +185,7 @@ async def get_optimization_opportunities(
                     }
                 )
 
-            if cvr < 1.0 and clicks > 100:
+            if cvr < LOW_CVR_THRESHOLD and clicks > LOW_CVR_MIN_CLICKS:
                 opportunities.append(
                     {
                         "platform": "meta",
@@ -262,7 +282,6 @@ async def get_optimization_opportunities(
         "count": len(sorted_opportunities),
         "by_platform": by_platform,
         "by_priority": by_priority,
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors

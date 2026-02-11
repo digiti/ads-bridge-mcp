@@ -75,6 +75,19 @@ async def get_change_log(
     google_login_customer_id: str | None = None,
     limit: int = 50,
 ) -> str:
+    """Fetch and unify account change history from Meta and Google Ads.
+
+    Use when: You need an audit-style timeline of edits (who changed what and
+    when) across ad platforms for troubleshooting, governance, or handoff review.
+
+    Args:
+        meta_account_ids: Meta ad account IDs to pull activity logs from.
+        google_account_ids: Google Ads customer IDs to pull change events from.
+        date_start: Inclusive start date for the audit window in YYYY-MM-DD format.
+        date_end: Inclusive end date for the audit window in YYYY-MM-DD format.
+        google_login_customer_id: Optional manager account ID for Google Ads API access.
+        limit: Maximum events to request per account per platform.
+    """
     errors: list[dict[str, Any]] = []
     events: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"accounts": {}}
@@ -178,7 +191,6 @@ async def get_change_log(
         "events": events,
         "count": len(events),
         "by_platform": {"meta": meta_count, "google": google_count},
-        "platform_results": {"meta": meta_raw, "google": google_raw},
     }
     if errors:
         result["errors"] = errors
