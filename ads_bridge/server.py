@@ -3,7 +3,25 @@ import os
 from . import mcp
 
 
-from .tools import accounts, anomalies, budget, campaigns, performance, summary  # noqa: E402,F401
+from .tools import (  # noqa: E402,F401
+    accounts,
+    ad_performance,
+    anomalies,
+    budget,
+    campaigns,
+    changelog,
+    creative_analysis,
+    daily_trends,
+    demographics,
+    devices,
+    geo,
+    optimization,
+    pacing,
+    performance,
+    period_comparison,
+    placements,
+    summary,
+)
 
 
 def main() -> None:
