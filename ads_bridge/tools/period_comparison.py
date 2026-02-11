@@ -4,7 +4,14 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import compute_derived_metrics, micros_to_display, normalize_google_insights, normalize_meta_insights, safe_divide
+from ..normalize import (
+    attach_diagnostics,
+    compute_derived_metrics,
+    micros_to_display,
+    normalize_google_insights,
+    normalize_meta_insights,
+    safe_divide,
+)
 
 
 def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -141,6 +148,7 @@ async def get_period_comparison(
     compare_date_start: str,
     compare_date_end: str,
     google_login_customer_id: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Compare current and previous period performance across Meta and Google Ads.
 
@@ -159,16 +167,16 @@ async def get_period_comparison(
     (
         current_meta_rows,
         current_google_rows,
-        _current_meta_raw,
-        _current_google_raw,
+        current_meta_raw,
+        current_google_raw,
         current_errors,
     ) = await _fetch_period(meta_account_ids, google_account_ids, date_start, date_end, google_login_customer_id)
 
     (
         previous_meta_rows,
         previous_google_rows,
-        _previous_meta_raw,
-        _previous_google_raw,
+        previous_meta_raw,
+        previous_google_raw,
         previous_errors,
     ) = await _fetch_period(
         meta_account_ids,
@@ -219,5 +227,19 @@ async def get_period_comparison(
     }
     if errors:
         result["errors"] = errors
+
+    meta_raw = {
+        "accounts": {
+            **current_meta_raw.get("accounts", {}),
+            **{f"previous:{k}": v for k, v in previous_meta_raw.get("accounts", {}).items()},
+        }
+    }
+    google_raw = {
+        "accounts": {
+            **current_google_raw.get("accounts", {}),
+            **{f"previous:{k}": v for k, v in previous_google_raw.get("accounts", {}).items()},
+        }
+    }
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

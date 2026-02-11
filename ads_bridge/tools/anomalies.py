@@ -5,7 +5,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import normalize_google_insights, normalize_meta_insights, safe_divide
+from ..normalize import attach_diagnostics, normalize_google_insights, normalize_meta_insights, safe_divide
 
 
 SPEND_SPIKE_THRESHOLD_PCT = 100
@@ -133,6 +133,7 @@ async def detect_anomalies(
     meta_account_ids: list[str],
     google_account_ids: list[str],
     google_login_customer_id: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Detect spend, CTR, and conversion anomalies at campaign level.
 
@@ -251,5 +252,7 @@ async def detect_anomalies(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

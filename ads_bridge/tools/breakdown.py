@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import compute_derived_metrics, meta_spend_to_micros, micros_to_display, safe_divide
+from ..normalize import attach_diagnostics, compute_derived_metrics, meta_spend_to_micros, micros_to_display, safe_divide
 
 
 _META_CONVERSION_ACTION_TYPES = {
@@ -156,6 +156,7 @@ async def compare_by_dimension(
     date_end: str,
     dimension: str = "age",
     google_login_customer_id: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Compare Meta + Google performance side-by-side by a selected breakdown dimension.
 
@@ -385,23 +386,23 @@ async def compare_by_dimension(
                     }
                 )
 
-        meta_by_segment: dict[str, list[dict[str, Any]]] = {}
-        google_by_segment: dict[str, list[dict[str, Any]]] = {}
+        meta_rows_by_segment: dict[str, list[dict[str, Any]]] = {}
+        google_rows_by_segment: dict[str, list[dict[str, Any]]] = {}
         for row in meta_rows:
-            meta_by_segment.setdefault(str(row["segment"]), []).append(row)
+            meta_rows_by_segment.setdefault(str(row["segment"]), []).append(row)
         for row in google_rows:
-            google_by_segment.setdefault(str(row["segment"]), []).append(row)
+            google_rows_by_segment.setdefault(str(row["segment"]), []).append(row)
 
         segment_keys = sorted(
-            set(meta_by_segment.keys()) | set(google_by_segment.keys()),
+            set(meta_rows_by_segment.keys()) | set(google_rows_by_segment.keys()),
             key=_device_sort_key if dimension == "device" else (lambda segment: _segment_sort_key(segment, dimension)),
         )
 
         segments: list[dict[str, Any]] = []
         total_spend_micros = sum(int(r.get("spend_micros", 0)) for r in meta_rows + google_rows)
         for segment in segment_keys:
-            meta_segment_rows = meta_by_segment.get(segment, [])
-            google_segment_rows = google_by_segment.get(segment, [])
+            meta_segment_rows = meta_rows_by_segment.get(segment, [])
+            google_segment_rows = google_rows_by_segment.get(segment, [])
             combined_rows = meta_segment_rows + google_segment_rows
             meta_totals = _aggregate_rows(meta_segment_rows)
             google_totals = _aggregate_rows(google_segment_rows)
@@ -429,6 +430,7 @@ async def compare_by_dimension(
         }
         if errors:
             result["errors"] = errors
+        attach_diagnostics(result, meta_raw, google_raw, include_raw)
         return json.dumps(result, indent=2)
 
     meta_by_segment: dict[str, dict[str, Any]] = {}
@@ -526,5 +528,7 @@ async def compare_by_dimension(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

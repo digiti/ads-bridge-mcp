@@ -3,10 +3,13 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_both
+from ..normalize import attach_diagnostics
 
 
 @mcp.tool()
-async def compare_accounts() -> str:
+async def compare_accounts(
+    include_raw: bool = False,
+) -> str:
     """List accessible Meta and Google Ads accounts for the current credentials.
 
     Use when: You need account IDs before running analysis tools, want to confirm
@@ -66,5 +69,9 @@ async def compare_accounts() -> str:
     }
     if errors:
         result["errors"] = errors
+
+    meta_raw = {"accounts": {"all": meta_result}}
+    google_raw = {"accounts": {"all": google_result}}
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

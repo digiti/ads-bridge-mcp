@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import compute_derived_metrics, micros_to_display, normalize_google_insights, normalize_meta_insights
+from ..normalize import attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_google_insights, normalize_meta_insights
 
 
 def _aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -30,6 +30,7 @@ async def compare_daily_trends(
     date_start: str,
     date_end: str,
     google_login_customer_id: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Compare daily account-level performance trends across Meta and Google Ads.
 
@@ -155,5 +156,7 @@ async def compare_daily_trends(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

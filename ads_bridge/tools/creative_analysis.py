@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import meta_spend_to_micros, micros_to_display, safe_divide
+from ..normalize import build_diagnostics, meta_spend_to_micros, micros_to_display, safe_divide
 
 
 def _extract_meta_conversions(actions: Any) -> float:
@@ -97,6 +97,7 @@ async def analyze_creative_performance(
     google_login_customer_id: str | None = None,
     limit: int = 10,
     sort_by: str = "spend_micros",
+    include_raw: bool = False,
 ) -> str:
     """Analyze top-performing creatives and ad assets across Meta and Google Ads.
 
@@ -379,5 +380,12 @@ async def analyze_creative_performance(
     }
     if errors:
         result["errors"] = errors
+
+    result["diagnostics"] = build_diagnostics(
+        {"accounts": meta_raw.get("insights", {})},
+        {"accounts": google_raw.get("ads", {})},
+    )
+    if include_raw:
+        result["platform_results"] = {"meta": meta_raw, "google": google_raw}
 
     return json.dumps(result, indent=2)

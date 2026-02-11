@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import compute_derived_metrics, micros_to_display, normalize_meta_insights, safe_divide
+from ..normalize import attach_diagnostics, compute_derived_metrics, micros_to_display, normalize_meta_insights, safe_divide
 
 
 def _empty_ad_row() -> dict[str, Any]:
@@ -58,6 +58,7 @@ async def compare_ad_performance(
     sort_by: str = "spend_micros",
     limit: int = 20,
     sort_order: str = "desc",
+    include_raw: bool = False,
 ) -> str:
     """Rank ad-level performance across Meta and Google Ads for a date range.
 
@@ -293,5 +294,7 @@ async def compare_ad_performance(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

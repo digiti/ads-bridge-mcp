@@ -123,10 +123,75 @@ def normalize_google_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def build_diagnostics(
+    meta_raw: dict[str, Any] | None = None,
+    google_raw: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build lightweight diagnostic summary from raw platform responses.
+
+    Always included in tool output. Gives the LLM enough signal to detect
+    normalization issues (wrong fields, missing data, suspicious value
+    ranges) without the full weight of raw responses.
+    """
+    diag: dict[str, Any] = {}
+    for platform, raw in [("meta", meta_raw), ("google", google_raw)]:
+        if raw is None:
+            continue
+        accounts = raw.get("accounts", {})
+        if not isinstance(accounts, dict):
+            diag[platform] = {"note": "non-standard raw shape", "keys": sorted(raw.keys())}
+            continue
+
+        total_rows = 0
+        fields_sample: set[str] = set()
+        error_count = 0
+
+        for account_data in accounts.values():
+            if not isinstance(account_data, dict):
+                continue
+            if "error" in account_data:
+                error_count += 1
+                continue
+            data = account_data.get("data", [])
+            if isinstance(data, list):
+                total_rows += len(data)
+                if data and isinstance(data[0], dict):
+                    fields_sample.update(data[0].keys())
+
+        diag[platform] = {
+            "accounts_queried": len(accounts),
+            "rows_returned": total_rows,
+            "errors": error_count,
+            "fields_present": sorted(fields_sample),
+        }
+    return diag
+
+
+def attach_diagnostics(
+    result: dict[str, Any],
+    meta_raw: dict[str, Any] | None = None,
+    google_raw: dict[str, Any] | None = None,
+    include_raw: bool = False,
+) -> None:
+    """Attach diagnostics (always) and platform_results (opt-in) to a tool response."""
+    result["diagnostics"] = build_diagnostics(meta_raw, google_raw)
+    if include_raw:
+        platform_results: dict[str, Any] = {}
+        if meta_raw is not None:
+            platform_results["meta"] = meta_raw
+        if google_raw is not None:
+            platform_results["google"] = google_raw
+        if platform_results:
+            result["platform_results"] = platform_results
+
+
 def build_response(
     status: str,
     rows: list[dict[str, Any]],
     errors: list[dict[str, Any]] | None = None,
+    meta_raw: dict[str, Any] | None = None,
+    google_raw: dict[str, Any] | None = None,
+    include_raw: bool = False,
 ) -> dict[str, Any]:
     response: dict[str, Any] = {
         "status": status,
@@ -135,4 +200,5 @@ def build_response(
     }
     if errors:
         response["errors"] = errors
+    attach_diagnostics(response, meta_raw, google_raw, include_raw)
     return response

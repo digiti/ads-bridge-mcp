@@ -6,7 +6,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import micros_to_display, normalize_google_insights, normalize_meta_insights, safe_divide
+from ..normalize import attach_diagnostics, micros_to_display, normalize_google_insights, normalize_meta_insights, safe_divide
 
 
 def _platform_totals(rows: list[dict[str, Any]]) -> dict[str, float]:
@@ -85,6 +85,7 @@ async def get_budget_analysis(
     google_login_customer_id: str | None = None,
     month_start: str | None = None,
     month_end: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Analyze cross-platform budget by mode: use allocation for spend split and ROAS over a custom date range, or pacing for in-month budget pacing and projected monthly spend."""
     if analysis_type not in {"allocation", "pacing"}:
@@ -222,6 +223,8 @@ async def get_budget_analysis(
         }
         if errors:
             result["errors"] = errors
+
+        attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
         return json.dumps(result, indent=2)
 
@@ -484,5 +487,7 @@ async def get_budget_analysis(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

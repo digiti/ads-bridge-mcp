@@ -5,6 +5,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
+from ..normalize import attach_diagnostics
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -74,6 +75,7 @@ async def get_change_log(
     date_end: str,
     google_login_customer_id: str | None = None,
     limit: int = 50,
+    include_raw: bool = False,
 ) -> str:
     """Fetch and unify account change history from Meta and Google Ads.
 
@@ -194,5 +196,7 @@ async def get_change_log(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

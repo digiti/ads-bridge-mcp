@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import meta_spend_to_micros, safe_divide
+from ..normalize import attach_diagnostics, meta_spend_to_micros, safe_divide
 
 
 LOW_CTR_THRESHOLD = 1.0
@@ -72,6 +72,7 @@ async def get_optimization_opportunities(
     date_start: str,
     date_end: str,
     google_login_customer_id: str | None = None,
+    include_raw: bool = False,
 ) -> str:
     """Surface actionable optimization opportunities across Meta and Google Ads.
 
@@ -285,5 +286,7 @@ async def get_optimization_opportunities(
     }
     if errors:
         result["errors"] = errors
+
+    attach_diagnostics(result, meta_raw, google_raw, include_raw)
 
     return json.dumps(result, indent=2)

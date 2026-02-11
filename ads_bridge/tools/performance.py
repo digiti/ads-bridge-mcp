@@ -5,6 +5,7 @@ from typing import Any
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
 from ..normalize import (
+    attach_diagnostics,
     build_response,
     compute_derived_metrics,
     micros_to_display,
@@ -135,6 +136,7 @@ async def compare_performance(
     level: str = "campaign",
     sort_by: str = "spend",
     limit: int = 10,
+    include_raw: bool = False,
 ) -> str:
     """Compare Meta and Google performance across multiple aggregation modes.
 
@@ -306,6 +308,9 @@ async def compare_performance(
             status=status,
             rows=aggregated_rows,
             errors=errors or None,
+            meta_raw=meta_raw,
+            google_raw=google_raw,
+            include_raw=include_raw,
         )
         response["metadata"] = {
             "date_start": date_start,
@@ -327,6 +332,7 @@ async def compare_performance(
         }
         if errors:
             result["errors"] = errors
+        attach_diagnostics(result, meta_raw, google_raw, include_raw)
         return json.dumps(result, indent=2)
 
     total_spend_micros = sum(int(row.get("spend_micros", 0)) for row in all_rows)
@@ -378,5 +384,7 @@ async def compare_performance(
     }
     if errors:
         summary_result["errors"] = errors
+
+    attach_diagnostics(summary_result, meta_raw, google_raw, include_raw)
 
     return json.dumps(summary_result, indent=2)
