@@ -73,6 +73,32 @@ def _aggregate_rows(rows: list[dict[str, Any]], aggregation: str) -> list[dict[s
     return sorted(out, key=lambda r: str(r.get("platform", "")))
 
 
+def _aggregate_by_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("platform", "")), str(row.get("account_id", "")), str(row.get("campaign_id", "")))
+        if key not in buckets:
+            buckets[key] = {
+                "platform": row.get("platform", ""),
+                "account_id": row.get("account_id", ""),
+                "account_name": row.get("account_name", ""),
+                "campaign_id": row.get("campaign_id", ""),
+                "campaign_name": row.get("campaign_name", ""),
+                "impressions": 0,
+                "clicks": 0,
+                "spend_micros": 0,
+                "conversions": 0.0,
+                "conversion_value": 0.0,
+            }
+        b = buckets[key]
+        b["impressions"] += int(row.get("impressions", 0))
+        b["clicks"] += int(row.get("clicks", 0))
+        b["spend_micros"] += int(row.get("spend_micros", 0))
+        b["conversions"] += float(row.get("conversions", 0))
+        b["conversion_value"] += float(row.get("conversion_value", 0))
+    return list(buckets.values())
+
+
 def _top_campaign_rows(rows: list[dict[str, Any]], sort_by: str, limit: int) -> list[dict[str, Any]]:
     metric_key = {
         "spend": "spend_micros",
@@ -81,7 +107,8 @@ def _top_campaign_rows(rows: list[dict[str, Any]], sort_by: str, limit: int) -> 
         "conversions": "conversions",
     }[sort_by]
 
-    ranked = sorted(rows, key=lambda row: float(row.get(metric_key, 0)), reverse=True)[: max(limit, 0)]
+    aggregated = _aggregate_by_campaign(rows)
+    ranked = sorted(aggregated, key=lambda row: float(row.get(metric_key, 0)), reverse=True)[: max(limit, 0)]
     return [
         {
             "rank": index + 1,
@@ -109,7 +136,8 @@ def _summary_top_campaigns(rows: list[dict[str, Any]], sort_by: str, limit: int 
         "clicks": "clicks",
         "conversions": "conversions",
     }[sort_by]
-    ordered = sorted(rows, key=lambda row: float(row.get(metric_key, 0)), reverse=True)
+    aggregated = _aggregate_by_campaign(rows)
+    ordered = sorted(aggregated, key=lambda row: float(row.get(metric_key, 0)), reverse=True)
     return [
         {
             "platform": row.get("platform", ""),

@@ -32,7 +32,7 @@ def _extract_meta_conversions(actions: Any) -> float:
             actions_by_type[atype] = float(action.get("value", 0) or 0)
 
     conversions = 0.0
-    for ptype in ("purchase", "omni_purchase"):
+    for ptype in ("omni_purchase", "purchase"):
         if ptype in actions_by_type:
             conversions += actions_by_type[ptype]
             break

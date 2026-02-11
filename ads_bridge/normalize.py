@@ -71,7 +71,7 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
             atype = action.get("action_type")
             if atype:
                 _actions_by_type[atype] = float(action.get("value", 0) or 0)
-        for _ptype in ("purchase", "omni_purchase"):
+        for _ptype in ("omni_purchase", "purchase"):
             if _ptype in _actions_by_type:
                 conversions += _actions_by_type[_ptype]
                 break
@@ -89,8 +89,8 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(av, dict)
         }
         for _atype in (
-            "purchase",
             "omni_purchase",
+            "purchase",
             "offsite_conversion.fb_pixel_purchase",
         ):
             _cv = _av_by_type.get(_atype, 0)
@@ -106,6 +106,10 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "account_name": item.get("account_name", ""),
                 "campaign_id": item.get("campaign_id", ""),
                 "campaign_name": item.get("campaign_name", ""),
+                "adset_id": item.get("adset_id", ""),
+                "adset_name": item.get("adset_name", ""),
+                "ad_id": item.get("ad_id", ""),
+                "ad_name": item.get("ad_name", ""),
                 "date_start": item.get("date_start", ""),
                 "date_stop": item.get("date_stop", ""),
                 "impressions": impressions,
@@ -196,6 +200,12 @@ def build_diagnostics(
             if "error" in account_data:
                 error_count += 1
                 continue
+            has_nested_error = any(
+                isinstance(v, dict) and "error" in v
+                for v in account_data.values()
+            )
+            if has_nested_error:
+                error_count += 1
             rows = _extract_rows_from_account(account_data)
             total_rows += len(rows)
             if rows and isinstance(rows[0], dict):

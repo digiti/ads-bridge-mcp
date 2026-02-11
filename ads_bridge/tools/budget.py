@@ -115,25 +115,25 @@ async def get_budget_analysis(
         month_end: Optional for pacing. End of budget window in YYYY-MM-DD (defaults to last day of month_start's month).
     """
     if analysis_type not in {"allocation", "pacing"}:
-        result = {"status": "error", "error": "Invalid analysis_type. Supported values are: allocation, pacing."}
+        result = {"status": "error", "errors": [{"source": "validation", "error": "Invalid analysis_type. Supported values are: allocation, pacing."}]}
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
     if analysis_type == "allocation":
         if not date_start or not date_end:
-            result = {"status": "error", "error": "date_start and date_end are required when analysis_type is 'allocation'."}
+            result = {"status": "error", "errors": [{"source": "validation", "error": "date_start and date_end are required when analysis_type is 'allocation'."}]}
             attach_diagnostics(result)
             return json.dumps(result, indent=2)
         try:
             validate_date(date_start)
             validate_date(date_end)
         except InvalidDateError as exc:
-            result = {"status": "error", "error": str(exc)}
+            result = {"status": "error", "errors": [{"source": "validation", "error": str(exc)}]}
             attach_diagnostics(result)
             return json.dumps(result, indent=2)
 
         if date_start > date_end:
-            result = {"status": "error", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}
+            result = {"status": "error", "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
             attach_diagnostics(result)
             return json.dumps(result, indent=2)
 
@@ -262,7 +262,7 @@ async def get_budget_analysis(
     try:
         start_date = datetime.strptime(month_start, "%Y-%m-%d").date() if month_start else now.replace(day=1)
     except (ValueError, TypeError) as exc:
-        result = {"status": "error", "error": f"Invalid month_start '{month_start}': expected YYYY-MM-DD — {exc}"}
+        result = {"status": "error", "errors": [{"source": "validation", "error": f"Invalid month_start '{month_start}': expected YYYY-MM-DD — {exc}"}]}
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
@@ -273,13 +273,13 @@ async def get_budget_analysis(
             last_day = calendar.monthrange(start_date.year, start_date.month)[1]
             end_date = start_date.replace(day=last_day)
     except (ValueError, TypeError) as exc:
-        result = {"status": "error", "error": f"Invalid month_end '{month_end}': expected YYYY-MM-DD — {exc}"}
+        result = {"status": "error", "errors": [{"source": "validation", "error": f"Invalid month_end '{month_end}': expected YYYY-MM-DD — {exc}"}]}
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
     total_days_in_month = (end_date - start_date).days + 1
     if total_days_in_month <= 0:
-        result = {"status": "error", "error": f"month_start '{start_date.isoformat()}' is after month_end '{end_date.isoformat()}'"}
+        result = {"status": "error", "errors": [{"source": "validation", "error": f"month_start '{start_date.isoformat()}' is after month_end '{end_date.isoformat()}'"}]}
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 

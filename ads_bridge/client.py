@@ -10,8 +10,15 @@ logger = logging.getLogger(__name__)
 META_MCP_URL = os.environ.get("META_MCP_URL", "http://meta-ads-mcp:8080/mcp")
 GOOGLE_MCP_URL = os.environ.get("GOOGLE_MCP_URL", "http://google-ads-mcp:8080/mcp")
 
-MAX_RETRIES = max(int(os.environ.get("BRIDGE_MAX_RETRIES", "3")), 1)
-RETRY_BASE_DELAY = float(os.environ.get("BRIDGE_RETRY_BASE_DELAY", "0.5"))
+try:
+    MAX_RETRIES = max(int(os.environ.get("BRIDGE_MAX_RETRIES", "3")), 1)
+except (ValueError, TypeError):
+    MAX_RETRIES = 3
+
+try:
+    RETRY_BASE_DELAY = float(os.environ.get("BRIDGE_RETRY_BASE_DELAY", "0.5"))
+except (ValueError, TypeError):
+    RETRY_BASE_DELAY = 0.5
 
 _meta_client: Any = None
 _google_client: Any = None
@@ -153,7 +160,10 @@ async def _call_with_retry(
             last_error = exc
             logger.warning("Attempt %d/%d failed for %s.%s: %s", attempt + 1, MAX_RETRIES, platform, tool_name, exc)
             if client is not None:
-                await reset_client_fn(expected=client)
+                try:
+                    await asyncio.shield(reset_client_fn(expected=client))
+                except asyncio.CancelledError:
+                    raise
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 await asyncio.sleep(delay)

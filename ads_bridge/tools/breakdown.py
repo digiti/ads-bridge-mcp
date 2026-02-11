@@ -53,7 +53,7 @@ def _parse_meta_conversions(item: dict[str, Any]) -> float:
         if atype in _META_CONVERSION_ACTION_TYPES:
             actions_by_type[atype] = float(action.get("value", 0) or 0)
     conversions = 0.0
-    for ptype in ("purchase", "omni_purchase"):
+    for ptype in ("omni_purchase", "purchase"):
         if ptype in actions_by_type:
             conversions += actions_by_type[ptype]
             break
@@ -68,7 +68,7 @@ def _extract_meta_conversion_value(item: dict[str, Any]) -> float:
         for av in item.get("action_values", [])
         if isinstance(av, dict)
     }
-    for action_type in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
+    for action_type in ("omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase"):
         cv = av_by_type.get(action_type, 0)
         if cv:
             return cv

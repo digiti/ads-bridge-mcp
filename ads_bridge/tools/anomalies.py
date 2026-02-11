@@ -72,7 +72,7 @@ def _analyze_campaign(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if spend_change_pct > SPEND_SPIKE_THRESHOLD_PCT:
         anomalies.append(
             {
-                "metric": "spend",
+                "metric": "spend_micros",
                 "direction": "increase",
                 "expected": round(prev_spend, 2),
                 "actual": round(recent_spend, 2),
