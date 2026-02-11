@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 META_MCP_URL = os.environ.get("META_MCP_URL", "http://meta-ads-mcp:8080/mcp")
 GOOGLE_MCP_URL = os.environ.get("GOOGLE_MCP_URL", "http://google-ads-mcp:8080/mcp")
 
-MAX_RETRIES = int(os.environ.get("BRIDGE_MAX_RETRIES", "3"))
+MAX_RETRIES = max(int(os.environ.get("BRIDGE_MAX_RETRIES", "3")), 1)
 RETRY_BASE_DELAY = float(os.environ.get("BRIDGE_RETRY_BASE_DELAY", "0.5"))
 
 _meta_client: Any = None
@@ -18,14 +18,22 @@ _google_client: Any = None
 _meta_lock = asyncio.Lock()
 _google_lock = asyncio.Lock()
 
+_Client: Any = None
+
 
 def _get_client_class() -> Any:
-    fastmcp_module = importlib.import_module("fastmcp")
-    return getattr(fastmcp_module, "Client")
+    global _Client
+    if _Client is None:
+        fastmcp_module = importlib.import_module("fastmcp")
+        _Client = getattr(fastmcp_module, "Client")
+    return _Client
 
 
 async def _get_meta_client() -> Any:
     global _meta_client
+    client = _meta_client
+    if client is not None:
+        return client
     async with _meta_lock:
         if _meta_client is None:
             client_cls = _get_client_class()
@@ -36,6 +44,9 @@ async def _get_meta_client() -> Any:
 
 async def _get_google_client() -> Any:
     global _google_client
+    client = _google_client
+    if client is not None:
+        return client
     async with _google_lock:
         if _google_client is None:
             client_cls = _get_client_class()
@@ -44,32 +55,47 @@ async def _get_google_client() -> Any:
         return _google_client
 
 
-async def _reset_meta_client() -> None:
+async def _reset_meta_client(expected: Any = None) -> None:
     global _meta_client
+    client_to_close: Any = None
     async with _meta_lock:
-        if _meta_client is not None:
-            try:
-                await _meta_client.__aexit__(None, None, None)
-            except Exception:
-                pass
-            _meta_client = None
+        if _meta_client is None:
+            return
+        if expected is not None and _meta_client is not expected:
+            return
+        client_to_close = _meta_client
+        _meta_client = None
+    try:
+        await client_to_close.__aexit__(None, None, None)
+    except Exception:
+        pass
 
 
-async def _reset_google_client() -> None:
+async def _reset_google_client(expected: Any = None) -> None:
     global _google_client
+    client_to_close: Any = None
     async with _google_lock:
-        if _google_client is not None:
-            try:
-                await _google_client.__aexit__(None, None, None)
-            except Exception:
-                pass
-            _google_client = None
+        if _google_client is None:
+            return
+        if expected is not None and _google_client is not expected:
+            return
+        client_to_close = _google_client
+        _google_client = None
+    try:
+        await client_to_close.__aexit__(None, None, None)
+    except Exception:
+        pass
+
+
+async def shutdown_clients() -> None:
+    await _reset_meta_client()
+    await _reset_google_client()
 
 
 def _extract_result_payload(result: Any) -> dict[str, Any]:
     content = getattr(result, "content", None)
 
-    if not content:
+    if not content or not isinstance(content, (list, tuple)):
         return {}
 
     first = content[0]
@@ -108,6 +134,7 @@ async def _call_with_retry(
 ) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(MAX_RETRIES):
+        client: Any = None
         try:
             client = await get_client_fn()
             result = await client.call_tool(tool_name, arguments)
@@ -117,7 +144,7 @@ async def _call_with_retry(
         except Exception as exc:
             last_error = exc
             logger.warning("Attempt %d/%d failed for %s.%s: %s", attempt + 1, MAX_RETRIES, platform, tool_name, exc)
-            await reset_client_fn()
+            await reset_client_fn(expected=client)
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 await asyncio.sleep(delay)

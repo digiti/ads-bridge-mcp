@@ -21,7 +21,7 @@ def _aggregate_rows(rows: list[dict[str, Any]], aggregation: str) -> list[dict[s
         spend_micros = sum(int(r.get("spend_micros", 0)) for r in source_rows)
         conversions = sum(float(r.get("conversions", 0)) for r in source_rows)
         conversion_value = sum(float(r.get("conversion_value", 0)) for r in source_rows)
-        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions)
+        derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
         return {
             **label,
             "impressions": impressions,
