@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .. import mcp
@@ -145,7 +145,7 @@ async def detect_anomalies(
         google_account_ids: Google Ads customer IDs to include in anomaly checks.
         google_login_customer_id: Optional manager account ID for Google Ads API access.
     """
-    today = datetime.now(UTC).date()
+    today = datetime.now(timezone.utc).date()
     date_start = (today - timedelta(days=ANOMALY_LOOKBACK_DAYS - 1)).isoformat()
     date_end = today.isoformat()
 

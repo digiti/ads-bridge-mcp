@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .. import mcp
@@ -18,9 +18,15 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
     iso_text = text.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(iso_text)
+        dt = datetime.fromisoformat(iso_text)
     except ValueError:
         return None
+
+    # Ensure all returned datetimes are UTC-aware so sorting never
+    # mixes offset-aware and offset-naive objects.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _normalize_meta_event(item: dict[str, Any], account_id: str) -> dict[str, Any]:

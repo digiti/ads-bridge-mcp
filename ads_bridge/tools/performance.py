@@ -231,6 +231,9 @@ async def compare_performance(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if aggregation in {"top_campaigns", "summary"} and level != "campaign":
+        level = "campaign"
+
     errors: list[dict[str, Any]] = []
     meta_rows: list[dict[str, Any]] = []
     google_rows: list[dict[str, Any]] = []

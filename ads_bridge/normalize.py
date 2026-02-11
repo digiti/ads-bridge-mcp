@@ -19,12 +19,12 @@ def validate_date(date_str: str) -> str:
     return date_str
 
 
-def meta_spend_to_micros(spend_str: str | float) -> int:
-    return int(float(spend_str) * 1_000_000)
+def meta_spend_to_micros(spend_str: str | float | None) -> int:
+    return int(float(spend_str or 0) * 1_000_000)
 
 
-def google_micros_to_micros(cost_micros: int | str) -> int:
-    return int(cost_micros)
+def google_micros_to_micros(cost_micros: int | str | None) -> int:
+    return int(cost_micros or 0)
 
 
 def micros_to_display(micros: int) -> str:

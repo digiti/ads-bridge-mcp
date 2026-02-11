@@ -1,7 +1,7 @@
 import asyncio
 import calendar
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .. import mcp
@@ -258,7 +258,7 @@ async def get_budget_analysis(
 
         return json.dumps(result, indent=2)
 
-    now = datetime.now(UTC).date()
+    now = datetime.now(timezone.utc).date()
     try:
         start_date = datetime.strptime(month_start, "%Y-%m-%d").date() if month_start else now.replace(day=1)
     except (ValueError, TypeError) as exc:
