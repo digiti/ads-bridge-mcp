@@ -87,6 +87,11 @@ async def compare_ad_performance(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if date_start > date_end:
+        result = {"status": "error", "ads": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     allowed_sort_by = {"spend_micros", "impressions", "clicks", "conversions", "ctr", "cpc_micros"}
     if sort_by not in allowed_sort_by:
         result = {"status": "error", "ads": [], "errors": [{"source": "validation", "error": f"sort_by must be one of {sorted(allowed_sort_by)}"}]}

@@ -30,14 +30,12 @@ def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "spend": micros_to_display(spend_micros),
         "conversions": round(conversions, 2),
         "conversion_value": round(conversion_value, 2),
-        "ctr": float(derived["ctr"]),
-        "cpc_micros": int(derived["cpc_micros"]),
-        "cpm_micros": int(derived["cpm_micros"]),
+        **derived,
     }
 
 
 def _build_change(current: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
-    metrics = ["impressions", "clicks", "spend_micros", "conversions", "ctr", "cpc_micros"]
+    metrics = ["impressions", "clicks", "spend_micros", "conversions", "ctr", "cpc_micros", "cpm_micros", "cvr", "roas", "cost_per_conversion_micros"]
     changes: dict[str, Any] = {}
     for metric in metrics:
         current_value = float(current.get(metric, 0))
@@ -180,6 +178,15 @@ async def get_period_comparison(
         validate_date(compare_date_end)
     except InvalidDateError as exc:
         result = {"status": "error", "comparison": {}, "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
+    if date_start > date_end:
+        result = {"status": "error", "comparison": {}, "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+    if compare_date_start > compare_date_end:
+        result = {"status": "error", "comparison": {}, "errors": [{"source": "validation", "error": f"compare_date_start '{compare_date_start}' is after compare_date_end '{compare_date_end}'"}]}
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 

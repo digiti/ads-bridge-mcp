@@ -132,6 +132,11 @@ async def get_budget_analysis(
             attach_diagnostics(result)
             return json.dumps(result, indent=2)
 
+        if date_start > date_end:
+            result = {"status": "error", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}
+            attach_diagnostics(result)
+            return json.dumps(result, indent=2)
+
         errors: list[dict[str, Any]] = []
         meta_rows: list[dict[str, Any]] = []
         google_rows: list[dict[str, Any]] = []
@@ -273,6 +278,11 @@ async def get_budget_analysis(
         return json.dumps(result, indent=2)
 
     total_days_in_month = (end_date - start_date).days + 1
+    if total_days_in_month <= 0:
+        result = {"status": "error", "error": f"month_start '{start_date.isoformat()}' is after month_end '{end_date.isoformat()}'"}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     today_in_window = min(max(now, start_date), end_date)
     days_elapsed = (today_in_window - start_date + timedelta(days=1)).days
     days_remaining = max(total_days_in_month - days_elapsed, 0)

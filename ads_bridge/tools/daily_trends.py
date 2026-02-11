@@ -59,6 +59,11 @@ async def compare_daily_trends(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if date_start > date_end:
+        result = {"status": "error", "daily": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     meta_rows: list[dict[str, Any]] = []
     google_rows: list[dict[str, Any]] = []

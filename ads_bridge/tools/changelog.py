@@ -5,7 +5,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics
+from ..normalize import InvalidDateError, attach_diagnostics, validate_date
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -90,6 +90,19 @@ async def get_change_log(
         google_login_customer_id: Optional manager account ID for Google Ads API access.
         limit: Maximum events to request per account per platform.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result: dict[str, Any] = {"status": "error", "events": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
+    if date_start > date_end:
+        result = {"status": "error", "events": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     events: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"accounts": {}}
@@ -169,7 +182,8 @@ async def get_change_log(
             errors.append({"platform": "google", "account_id": account_id, "error": str(result["error"])})
             continue
 
-        for item in result.get("data", []):
+        raw_events = result.get("events") or result.get("data") or []
+        for item in raw_events:
             if isinstance(item, dict):
                 events.append(_normalize_google_event(item, account_id))
 

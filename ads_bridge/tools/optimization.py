@@ -4,7 +4,7 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import attach_diagnostics, meta_spend_to_micros, safe_divide
+from ..normalize import InvalidDateError, attach_diagnostics, meta_spend_to_micros, safe_divide, validate_date
 
 
 LOW_CTR_THRESHOLD = 1.0
@@ -15,14 +15,29 @@ LOW_CVR_MIN_CLICKS = 100
 
 
 def _extract_meta_conversions(actions: Any) -> float:
+    """Extract conversion count with purchase/omni_purchase dedup.
+
+    Meta reports both ``purchase`` and ``omni_purchase`` which overlap.
+    Use priority order: pick the first match among purchase-type actions
+    to avoid double-counting, then add lead/complete_registration separately.
+    """
     if not isinstance(actions, list):
         return 0.0
-    conversions = 0.0
+    actions_by_type: dict[str, float] = {}
     for action in actions:
         if not isinstance(action, dict):
             continue
-        if action.get("action_type") in ("purchase", "lead", "complete_registration", "omni_purchase"):
-            conversions += float(action.get("value", 0) or 0)
+        atype = action.get("action_type")
+        if atype in ("purchase", "lead", "complete_registration", "omni_purchase"):
+            actions_by_type[atype] = float(action.get("value", 0) or 0)
+
+    conversions = 0.0
+    for ptype in ("purchase", "omni_purchase"):
+        if ptype in actions_by_type:
+            conversions += actions_by_type[ptype]
+            break
+    for otype in ("lead", "complete_registration"):
+        conversions += actions_by_type.get(otype, 0)
     return conversions
 
 
@@ -87,6 +102,19 @@ async def get_optimization_opportunities(
         date_end: Inclusive end date for performance evaluation in YYYY-MM-DD format.
         google_login_customer_id: Optional manager account ID for Google Ads API access.
     """
+    try:
+        validate_date(date_start)
+        validate_date(date_end)
+    except InvalidDateError as exc:
+        result: dict[str, Any] = {"status": "error", "opportunities": [], "errors": [{"source": "validation", "error": str(exc)}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
+    if date_start > date_end:
+        result = {"status": "error", "opportunities": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     opportunities: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"accounts": {}}

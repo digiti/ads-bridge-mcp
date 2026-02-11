@@ -135,6 +135,11 @@ async def analyze_creative_performance(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if date_start > date_end:
+        result = {"status": "error", "creatives": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     errors: list[dict[str, Any]] = []
     creatives: list[dict[str, Any]] = []
     meta_raw: dict[str, Any] = {"insights": {}, "creatives": {}}

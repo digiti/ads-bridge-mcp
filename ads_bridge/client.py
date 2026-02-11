@@ -68,7 +68,7 @@ async def _reset_meta_client(expected: Any = None) -> None:
         client_to_close = _meta_client
         _meta_client = None
     try:
-        await client_to_close.__aexit__(None, None, None)
+        await asyncio.shield(client_to_close.__aexit__(None, None, None))
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -86,7 +86,7 @@ async def _reset_google_client(expected: Any = None) -> None:
         client_to_close = _google_client
         _google_client = None
     try:
-        await client_to_close.__aexit__(None, None, None)
+        await asyncio.shield(client_to_close.__aexit__(None, None, None))
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -182,6 +182,11 @@ async def call_both(
     )
     meta_result: dict[str, Any] | BaseException = results[0]
     google_result: dict[str, Any] | BaseException = results[1]
+
+    # Propagate CancelledError instead of swallowing it into an error dict
+    for r in (meta_result, google_result):
+        if isinstance(r, asyncio.CancelledError):
+            raise r
 
     if isinstance(meta_result, BaseException):
         meta_result = {"error": str(meta_result), "platform": "meta"}

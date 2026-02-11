@@ -151,16 +151,29 @@ def normalize_google_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+_DATA_KEYS = ("data", "events", "recommendations", "accounts")
+
+
+def _extract_rows_from_account(account_data: dict[str, Any]) -> list[Any]:
+    for key in _DATA_KEYS:
+        candidate = account_data.get(key)
+        if isinstance(candidate, list) and candidate:
+            return candidate
+
+    nested_rows: list[Any] = []
+    for v in account_data.values():
+        if isinstance(v, dict):
+            for key in _DATA_KEYS:
+                candidate = v.get(key)
+                if isinstance(candidate, list):
+                    nested_rows.extend(candidate)
+    return nested_rows
+
+
 def build_diagnostics(
     meta_raw: dict[str, Any] | None = None,
     google_raw: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build lightweight diagnostic summary from raw platform responses.
-
-    Always included in tool output. Gives the LLM enough signal to detect
-    normalization issues (wrong fields, missing data, suspicious value
-    ranges) without the full weight of raw responses.
-    """
     diag: dict[str, Any] = {}
     for platform, raw in [("meta", meta_raw), ("google", google_raw)]:
         if raw is None:
@@ -183,11 +196,10 @@ def build_diagnostics(
             if "error" in account_data:
                 error_count += 1
                 continue
-            data = account_data.get("data", [])
-            if isinstance(data, list):
-                total_rows += len(data)
-                if data and isinstance(data[0], dict):
-                    fields_sample.update(data[0].keys())
+            rows = _extract_rows_from_account(account_data)
+            total_rows += len(rows)
+            if rows and isinstance(rows[0], dict):
+                fields_sample.update(rows[0].keys())
 
         diag[platform] = {
             "accounts_queried": len(accounts),

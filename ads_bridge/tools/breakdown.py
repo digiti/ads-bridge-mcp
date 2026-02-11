@@ -202,6 +202,11 @@ async def compare_by_dimension(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if date_start > date_end:
+        result = {"status": "error", "dimension": dimension, "date_start": date_start, "date_end": date_end, "segments": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     allowed_dimensions = {"age", "gender", "device", "country", "placement"}
     if dimension not in allowed_dimensions:
         result = {"status": "error", "dimension": dimension, "date_start": date_start, "date_end": date_end, "segments": [], "errors": [{"source": "validation", "error": f"dimension must be one of {sorted(allowed_dimensions)}"}]}

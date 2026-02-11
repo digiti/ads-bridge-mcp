@@ -179,6 +179,11 @@ async def compare_performance(
         attach_diagnostics(result)
         return json.dumps(result, indent=2)
 
+    if date_start > date_end:
+        result = {"status": "error", "rows": [], "errors": [{"source": "validation", "error": f"date_start '{date_start}' is after date_end '{date_end}'"}]}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
+
     allowed_aggregations = {"by_platform", "by_account", "total", "top_campaigns", "summary"}
     allowed_levels = {"account", "campaign"}
     allowed_sort = {"spend", "impressions", "clicks", "conversions"}
