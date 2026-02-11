@@ -1,5 +1,8 @@
+import re
 from datetime import datetime
 from typing import Any
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class InvalidDateError(ValueError):
@@ -7,6 +10,8 @@ class InvalidDateError(ValueError):
 
 
 def validate_date(date_str: str) -> str:
+    if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
+        raise InvalidDateError(f"Invalid date '{date_str}': expected YYYY-MM-DD")
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
     except (ValueError, TypeError) as exc:
@@ -55,15 +60,23 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
         clicks = int(item.get("clicks", 0))
         spend_micros = meta_spend_to_micros(item.get("spend", "0"))
 
+        # Dedup purchase-type conversions: omni_purchase is Meta's superset of
+        # purchase — summing both inflates conversions.  Use priority order and
+        # pick the first match; add lead/complete_registration separately.
         conversions = 0.0
+        _actions_by_type: dict[str, float] = {}
         for action in item.get("actions", []):
-            if action.get("action_type") in (
-                "purchase",
-                "lead",
-                "complete_registration",
-                "omni_purchase",
-            ):
-                conversions += float(action.get("value", 0))
+            if not isinstance(action, dict):
+                continue
+            atype = action.get("action_type")
+            if atype:
+                _actions_by_type[atype] = float(action.get("value", 0) or 0)
+        for _ptype in ("purchase", "omni_purchase"):
+            if _ptype in _actions_by_type:
+                conversions += _actions_by_type[_ptype]
+                break
+        for _otype in ("lead", "complete_registration"):
+            conversions += _actions_by_type.get(_otype, 0)
 
         # Extract conversion value from action_values (monetary amounts).
         # purchase, omni_purchase, and offsite_conversion.fb_pixel_purchase
@@ -71,16 +84,18 @@ def normalize_meta_insights(data: dict[str, Any]) -> list[dict[str, Any]]:
         # avoid double-counting.
         conversion_value = 0.0
         _av_by_type = {
-            av.get("action_type"): float(av.get("value", 0))
+            av.get("action_type"): float(av.get("value", 0) or 0)
             for av in item.get("action_values", [])
+            if isinstance(av, dict)
         }
         for _atype in (
             "purchase",
             "omni_purchase",
             "offsite_conversion.fb_pixel_purchase",
         ):
-            if _atype in _av_by_type:
-                conversion_value = _av_by_type[_atype]
+            _cv = _av_by_type.get(_atype, 0)
+            if _cv:
+                conversion_value = _cv
                 break
 
         derived = compute_derived_metrics(impressions, clicks, spend_micros, conversions, conversion_value)
@@ -149,6 +164,9 @@ def build_diagnostics(
     diag: dict[str, Any] = {}
     for platform, raw in [("meta", meta_raw), ("google", google_raw)]:
         if raw is None:
+            continue
+        if not isinstance(raw, dict):
+            diag[platform] = {"note": "unexpected raw type", "type": type(raw).__name__}
             continue
         accounts = raw.get("accounts", {})
         if not isinstance(accounts, dict):

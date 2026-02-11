@@ -69,6 +69,8 @@ async def _reset_meta_client(expected: Any = None) -> None:
         _meta_client = None
     try:
         await client_to_close.__aexit__(None, None, None)
+    except asyncio.CancelledError:
+        raise
     except Exception:
         pass
 
@@ -85,6 +87,8 @@ async def _reset_google_client(expected: Any = None) -> None:
         _google_client = None
     try:
         await client_to_close.__aexit__(None, None, None)
+    except asyncio.CancelledError:
+        raise
     except Exception:
         pass
 
@@ -143,10 +147,13 @@ async def _call_with_retry(
             if getattr(result, "is_error", False):
                 return {"error": str(getattr(result, "content", f"Unknown {platform} MCP error")), "platform": platform}
             return _extract_result_payload(result)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             last_error = exc
             logger.warning("Attempt %d/%d failed for %s.%s: %s", attempt + 1, MAX_RETRIES, platform, tool_name, exc)
-            await reset_client_fn(expected=client)
+            if client is not None:
+                await reset_client_fn(expected=client)
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 await asyncio.sleep(delay)

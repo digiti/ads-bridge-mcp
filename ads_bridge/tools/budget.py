@@ -254,16 +254,23 @@ async def get_budget_analysis(
         return json.dumps(result, indent=2)
 
     now = datetime.now(UTC).date()
-    if month_start:
-        start_date = datetime.strptime(month_start, "%Y-%m-%d").date()
-    else:
-        start_date = now.replace(day=1)
+    try:
+        start_date = datetime.strptime(month_start, "%Y-%m-%d").date() if month_start else now.replace(day=1)
+    except (ValueError, TypeError) as exc:
+        result = {"status": "error", "error": f"Invalid month_start '{month_start}': expected YYYY-MM-DD — {exc}"}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
-    if month_end:
-        end_date = datetime.strptime(month_end, "%Y-%m-%d").date()
-    else:
-        last_day = calendar.monthrange(start_date.year, start_date.month)[1]
-        end_date = start_date.replace(day=last_day)
+    try:
+        if month_end:
+            end_date = datetime.strptime(month_end, "%Y-%m-%d").date()
+        else:
+            last_day = calendar.monthrange(start_date.year, start_date.month)[1]
+            end_date = start_date.replace(day=last_day)
+    except (ValueError, TypeError) as exc:
+        result = {"status": "error", "error": f"Invalid month_end '{month_end}': expected YYYY-MM-DD — {exc}"}
+        attach_diagnostics(result)
+        return json.dumps(result, indent=2)
 
     total_days_in_month = (end_date - start_date).days + 1
     today_in_window = min(max(now, start_date), end_date)
@@ -513,9 +520,19 @@ async def get_budget_analysis(
     if errors:
         result["errors"] = errors
 
-    meta_diag_raw = {"accounts": meta_raw.get("insights", {})}
-    google_diag_raw = {"accounts": google_raw.get("spend", {})}
-    attach_diagnostics(result, meta_diag_raw, google_diag_raw, include_raw)
+    meta_diag_accounts: dict[str, Any] = {}
+    for account_id in meta_account_ids:
+        meta_diag_accounts[account_id] = {
+            "campaigns": meta_raw.get("campaigns", {}).get(account_id, {}),
+            "insights": meta_raw.get("insights", {}).get(account_id, {}),
+        }
+    google_diag_accounts: dict[str, Any] = {}
+    for account_id in google_account_ids:
+        google_diag_accounts[account_id] = {
+            "budgets": google_raw.get("budgets", {}).get(account_id, {}),
+            "spend": google_raw.get("spend", {}).get(account_id, {}),
+        }
+    attach_diagnostics(result, {"accounts": meta_diag_accounts}, {"accounts": google_diag_accounts}, include_raw=False)
     if include_raw:
         result["platform_results"] = {"meta": meta_raw, "google": google_raw}
 

@@ -4,18 +4,29 @@ from typing import Any
 
 from .. import mcp
 from ..client import call_google_tool, call_meta_tool
-from ..normalize import InvalidDateError, attach_diagnostics, build_diagnostics, meta_spend_to_micros, micros_to_display, safe_divide, validate_date
+from ..normalize import InvalidDateError, attach_diagnostics, meta_spend_to_micros, micros_to_display, safe_divide, validate_date
 
 
 def _extract_meta_conversions(actions: Any) -> float:
+    # Dedup purchase-type conversions: omni_purchase is Meta's superset of
+    # purchase — summing both inflates conversions.  Priority order for
+    # purchase types, then add lead/complete_registration separately.
     if not isinstance(actions, list):
         return 0.0
-    conversions = 0.0
+    actions_by_type: dict[str, float] = {}
     for action in actions:
         if not isinstance(action, dict):
             continue
-        if action.get("action_type") in ("purchase", "lead", "complete_registration", "omni_purchase"):
-            conversions += float(action.get("value", 0) or 0)
+        atype = action.get("action_type")
+        if atype in ("purchase", "lead", "complete_registration", "omni_purchase"):
+            actions_by_type[atype] = float(action.get("value", 0) or 0)
+    conversions = 0.0
+    for ptype in ("purchase", "omni_purchase"):
+        if ptype in actions_by_type:
+            conversions += actions_by_type[ptype]
+            break
+    for otype in ("lead", "complete_registration"):
+        conversions += actions_by_type.get(otype, 0)
     return conversions
 
 
@@ -392,9 +403,11 @@ async def analyze_creative_performance(
     if errors:
         result["errors"] = errors
 
-    result["diagnostics"] = build_diagnostics(
+    attach_diagnostics(
+        result,
         {"accounts": meta_raw.get("insights", {})},
         {"accounts": google_raw.get("ads", {})},
+        include_raw=False,
     )
     if include_raw:
         result["platform_results"] = {"meta": meta_raw, "google": google_raw}

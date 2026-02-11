@@ -42,10 +42,23 @@ from ._geo_constants import COUNTRY_ID_TO_ISO
 
 
 def _parse_meta_conversions(item: dict[str, Any]) -> float:
-    conversions = 0.0
+    # Dedup purchase-type conversions: omni_purchase is Meta's superset of
+    # purchase — summing both inflates conversions.  Priority order for
+    # purchase types, then add lead/complete_registration separately.
+    actions_by_type: dict[str, float] = {}
     for action in item.get("actions", []):
-        if action.get("action_type") in _META_CONVERSION_ACTION_TYPES:
-            conversions += float(action.get("value", 0) or 0)
+        if not isinstance(action, dict):
+            continue
+        atype = action.get("action_type")
+        if atype in _META_CONVERSION_ACTION_TYPES:
+            actions_by_type[atype] = float(action.get("value", 0) or 0)
+    conversions = 0.0
+    for ptype in ("purchase", "omni_purchase"):
+        if ptype in actions_by_type:
+            conversions += actions_by_type[ptype]
+            break
+    for otype in ("lead", "complete_registration"):
+        conversions += actions_by_type.get(otype, 0)
     return conversions
 
 
@@ -56,8 +69,9 @@ def _extract_meta_conversion_value(item: dict[str, Any]) -> float:
         if isinstance(av, dict)
     }
     for action_type in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
-        if action_type in av_by_type:
-            return av_by_type[action_type]
+        cv = av_by_type.get(action_type, 0)
+        if cv:
+            return cv
     return 0.0
 
 
@@ -75,9 +89,7 @@ def _aggregate_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "spend": micros_to_display(spend_micros),
         "conversions": round(conversions, 2),
         "conversion_value": round(conversion_value, 2),
-        "ctr": float(derived["ctr"]),
-        "cpc_micros": int(derived["cpc_micros"]),
-        "cpm_micros": int(derived["cpm_micros"]),
+        **derived,
     }
 
 
@@ -501,21 +513,21 @@ async def compare_by_dimension(
     segment_keys = sorted(set(meta_by_segment.keys()) | set(google_by_segment.keys()))
     segments: list[dict[str, Any]] = []
     for segment in segment_keys:
-        meta_metrics = _finalize_metrics(meta_by_segment.get(segment, _empty_metrics()))
-        google_metrics = _finalize_metrics(google_by_segment.get(segment, _empty_metrics()))
-        combined_raw = {
-            "impressions": int(meta_metrics["impressions"]) + int(google_metrics["impressions"]),
-            "clicks": int(meta_metrics["clicks"]) + int(google_metrics["clicks"]),
-            "spend_micros": int(meta_metrics["spend_micros"]) + int(google_metrics["spend_micros"]),
-            "conversions": float(meta_metrics["conversions"]) + float(google_metrics["conversions"]),
-            "conversion_value": float(meta_metrics["conversion_value"]) + float(google_metrics["conversion_value"]),
+        meta_raw_bucket = meta_by_segment.get(segment, _empty_metrics())
+        google_raw_bucket = google_by_segment.get(segment, _empty_metrics())
+        combined_raw_bucket = {
+            "impressions": int(meta_raw_bucket.get("impressions", 0)) + int(google_raw_bucket.get("impressions", 0)),
+            "clicks": int(meta_raw_bucket.get("clicks", 0)) + int(google_raw_bucket.get("clicks", 0)),
+            "spend_micros": int(meta_raw_bucket.get("spend_micros", 0)) + int(google_raw_bucket.get("spend_micros", 0)),
+            "conversions": float(meta_raw_bucket.get("conversions", 0)) + float(google_raw_bucket.get("conversions", 0)),
+            "conversion_value": float(meta_raw_bucket.get("conversion_value", 0)) + float(google_raw_bucket.get("conversion_value", 0)),
         }
         segments.append(
             {
                 "segment": segment,
-                "meta": meta_metrics,
-                "google": google_metrics,
-                "combined": _finalize_metrics(combined_raw),
+                "meta": _finalize_metrics(meta_raw_bucket),
+                "google": _finalize_metrics(google_raw_bucket),
+                "combined": _finalize_metrics(combined_raw_bucket),
             }
         )
 
